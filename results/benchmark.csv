@@ -1,0 +1,3 @@
+workload,algorithm,accesses,hits,faults,hit_ratio
+CNN_Inference,LRU,25,10,15,0.4
+Transformer_Inference,LRU,21,15,6,0.7142857142857143

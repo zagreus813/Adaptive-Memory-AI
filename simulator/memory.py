@@ -1,12 +1,11 @@
 from simulator.replacement import LRUReplacement
-
+from simulator.logger import MemoryLogger
 
 
 class Memory:
 
 
-    def __init__(self, capacity):
-
+    def __init__(self, capacity, verbose=True):
         self.capacity = capacity
 
         self.pages = []
@@ -17,15 +16,26 @@ class Memory:
 
         self.replacement = LRUReplacement()
 
-
+        self.logger = MemoryLogger(
+           "results/memory_trace.csv"
+        )
+        self.hits = 0
+        self.accesses = 0
+        self.verbose = verbose
 
     def access(self,page):
 
         self.time += 1
+        self.accesses += 1
 
-
+        self.logger.log(
+            self.time,
+            page
+        )
         # Page موجود است
         if page in self.pages:
+        
+            self.hits += 1
 
             page.access(self.time)
 
@@ -69,3 +79,17 @@ class Memory:
     def status(self):
 
         return self.pages
+    def metrics(self):
+
+        hit_ratio = 0
+
+        if self.accesses > 0:
+            hit_ratio = self.hits / self.accesses
+
+
+        return {
+            "accesses": self.accesses,
+            "hits": self.hits,
+            "faults": self.page_faults,
+            "hit_ratio": hit_ratio
+        }

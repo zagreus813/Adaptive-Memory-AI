@@ -50,3 +50,4 @@ print(
     "Faults:",
     memory.page_faults
 )
+memory.logger.close()
