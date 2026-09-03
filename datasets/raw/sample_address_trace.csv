@@ -1,0 +1,8 @@
+timestamp,address,process_id,operation
+1,0x1000,1,READ
+2,0x1200,1,READ
+3,0x1FFF,1,WRITE
+4,0x2000,1,READ
+5,0x2400,1,READ
+6,0x3100,1,WRITE
+7,0x1000,1,READ
