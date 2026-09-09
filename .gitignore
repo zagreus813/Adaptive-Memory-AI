@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Raw memory traces
+datasets/raw/valgrind/*.log
+
+# Large generated datasets
+datasets/processed/*.csv
+
+# Native compiled binaries
+benchmarks/native/memory_walk
+benchmarks/native/hot_cold
+
+# Temporary files
+*.tmp
+*.swp
