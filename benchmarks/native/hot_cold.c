@@ -19,14 +19,22 @@
 #define ACCESSES 200000
 
 
+/*
+ * Default deterministic seed.
+ *
+ * Can be overridden from command line:
+ *
+ *     ./hot_cold 1111
+ */
 static uint32_t rng_state = 0x12345678u;
 
 
 /*
- * xorshift32
+ * xorshift32 PRNG
  *
- * Better suited than the previous LCG for this
- * controlled memory-workload experiment.
+ * Better than the previous LCG for this controlled
+ * experiment because we do not want strong patterns
+ * in the low-order bits.
  */
 static uint32_t fast_rand(void)
 {
@@ -43,17 +51,24 @@ static uint32_t fast_rand(void)
 
 
 /*
- * Map a 32-bit random value into [0, bound).
+ * Generate a random integer in:
  *
- * Using multiply-high avoids relying directly on
- * weak low-order bits with modulo operations.
+ *     [0, bound)
+ *
+ * Multiply-high avoids depending directly on
+ * modulo of the low PRNG bits.
  */
 static uint32_t random_bounded(
     uint32_t bound
 )
 {
+    if (bound == 0) {
+        return 0;
+    }
+
     uint64_t value =
-        (uint64_t)fast_rand() * bound;
+        (uint64_t)fast_rand()
+        * (uint64_t)bound;
 
     return (uint32_t)(
         value >> 32
@@ -61,20 +76,54 @@ static uint32_t random_bounded(
 }
 
 
-int main(void)
+int main(
+    int argc,
+    char **argv
+)
 {
-    int *array = NULL;
+    /*
+     * Optional seed from command line.
+     */
+    if (argc >= 2) {
+
+        unsigned long parsed_seed =
+            strtoul(
+                argv[1],
+                NULL,
+                0
+            );
+
+
+        /*
+         * xorshift32 must not use zero state.
+         */
+        if (parsed_seed == 0) {
+            parsed_seed = 1;
+        }
+
+
+        rng_state =
+            (uint32_t)parsed_seed;
+    }
+
+
+    uint32_t initial_seed =
+        rng_state;
 
 
     /*
-     * Page-align the allocation.
+     * Allocate exactly 256 pages and ensure that
+     * the first byte is aligned to a 4 KB boundary.
      *
-     * Now:
+     * This gives us:
      *
-     * 256 logical pages
-     * =
-     * 256 OS pages
+     *     256 logical pages
+     *     =
+     *     256 OS pages
      */
+    int *array = NULL;
+
+
     int rc = posix_memalign(
         (void **)&array,
         PAGE_SIZE,
@@ -82,7 +131,10 @@ int main(void)
     );
 
 
-    if (rc != 0 || array == NULL) {
+    if (
+        rc != 0
+        || array == NULL
+    ) {
 
         fprintf(
             stderr,
@@ -93,10 +145,20 @@ int main(void)
     }
 
 
+    /*
+     * Metadata used by the trace-processing pipeline.
+     */
+    printf(
+        "RNG_SEED=%u\n",
+        initial_seed
+    );
+
+
     printf(
         "ARRAY_BASE=%p\n",
         (void *)array
     );
+
 
     printf(
         "ARRAY_END=%p\n",
@@ -105,48 +167,85 @@ int main(void)
 
 
     /*
-     * Initialization phase.
+     * ------------------------------------------------
+     * Initialization phase
+     * ------------------------------------------------
      *
-     * This phase is removed later from the
+     * Touch every integer once.
+     *
+     * Expected accesses:
+     *
+     *     256 pages
+     *     × 4096 bytes
+     *     / 4 bytes per int
+     *
+     *     = 262,144 writes
+     *
+     * This phase is removed from the final
      * measurement trace.
      */
     for (
-        int i = 0;
+        uint32_t i = 0;
         i < TOTAL_INTS;
         i++
     ) {
 
-        array[i] = i;
+        array[i] =
+            (int)i;
     }
 
 
     long long checksum = 0;
 
 
+    /*
+     * ------------------------------------------------
+     * Measurement phase
+     * ------------------------------------------------
+     *
+     * 90% of accesses target 16 hot pages.
+     *
+     * 10% of accesses target the remaining
+     * 240 cold pages.
+     */
     for (
-        int i = 0;
+        uint32_t i = 0;
         i < ACCESSES;
         i++
     ) {
 
+        /*
+         * Value in:
+         *
+         *     [0, 100)
+         */
         uint32_t probability =
-            random_bounded(100);
+            random_bounded(
+                100
+            );
 
 
         uint32_t page;
 
 
         /*
-         * 90% of iterations access
-         * the hot working set.
+         * 90% Hot
          */
-        if (probability < 90) {
+        if (
+            probability < 90
+        ) {
 
-            page = random_bounded(
-                HOT_PAGES
-            );
+            page =
+                random_bounded(
+                    HOT_PAGES
+                );
 
-        } else {
+        }
+
+        /*
+         * 10% Cold
+         */
+        else {
 
             page =
                 HOT_PAGES
@@ -158,6 +257,10 @@ int main(void)
         }
 
 
+        /*
+         * Random integer offset inside
+         * the selected 4 KB page.
+         */
         uint32_t offset =
             random_bounded(
                 INTS_PER_PAGE
@@ -165,21 +268,36 @@ int main(void)
 
 
         uint32_t index =
-            page * INTS_PER_PAGE
+            (
+                page
+                * INTS_PER_PAGE
+            )
             + offset;
 
 
         /*
-         * Main read.
+         * Main READ.
+         *
+         * Exactly 200,000 reads originate here.
          */
-        checksum += array[index];
+        checksum +=
+            array[index];
 
 
         /*
-         * Every 20 iterations perform
-         * an additional modification.
+         * Every 20 iterations perform an
+         * additional modification:
+         *
+         *     READ + WRITE
+         *
+         * For 200,000 iterations:
+         *
+         *     10,000 additional reads
+         *     10,000 writes
          */
-        if ((i % 20) == 0) {
+        if (
+            (i % 20) == 0
+        ) {
 
             array[index] += 1;
         }
@@ -192,7 +310,10 @@ int main(void)
     );
 
 
-    free(array);
+    free(
+        array
+    );
+
 
     return 0;
 }

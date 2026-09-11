@@ -1,0 +1,2 @@
+model,capacity,train_decisions,test_decisions,log_mae,log_r2,lru_oracle_equivalent,memai_oracle_equivalent,lru_log_regret,memai_log_regret,regret_reduction_percent
+RandomForestRegressor,16,36864,15799,0.8583824882282476,0.7499096143302715,0.13133742641939364,0.36913728717007405,4.0508052067067055,1.0560056418342996,73.93096957400158
